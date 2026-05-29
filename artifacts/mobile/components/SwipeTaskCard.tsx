@@ -14,13 +14,13 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CalendarPicker } from "@/components/CalendarPicker";
 import type { Priority } from "@/context/TaskContext";
 import { useColors } from "@/hooks/useColors";
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const SWIPE_THRESHOLD = 80;
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+const SWIPE_H = 80;   // left/right threshold to commit priority
+const SWIPE_UP = 70;  // upward threshold to save
 
 interface Props {
   visible: boolean;
@@ -30,121 +30,157 @@ interface Props {
 
 const PRIORITY_META: Record<
   Priority,
-  { label: string; lightBg: string; darkBg: string; accent: string; icon: string }
+  { label: string; lightBg: string; darkBg: string; accent: string; textColor: string }
 > = {
   urgent: {
     label: "紧急",
     lightBg: "#FEF2F2",
     darkBg: "#FEE2E2",
     accent: "#EF4444",
-    icon: "🔴",
+    textColor: "#DC2626",
   },
   track: {
     label: "需跟踪",
     lightBg: "#FFFBEB",
     darkBg: "#FEF3C7",
     accent: "#F59E0B",
-    icon: "🟡",
+    textColor: "#D97706",
   },
   remember: {
     label: "记得做",
     lightBg: "#EFF6FF",
     darkBg: "#DBEAFE",
     accent: "#3B82F6",
-    icon: "🔵",
+    textColor: "#2563EB",
   },
 };
 
 export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
+
   const [content, setContent] = useState("");
   const [deadline, setDeadline] = useState<string | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
-  const [livePriority, setLivePriority] = useState<Priority>("track");
+  // Visually committed priority (drives background + bottom hint)
+  const [displayPriority, setDisplayPriority] = useState<Priority>("track");
 
-  const dragX = useRef(new Animated.Value(0)).current;
-  const cardScale = useRef(new Animated.Value(0.92)).current;
-  const cardOpacity = useRef(new Animated.Value(0)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  // Refs
+  const committedPriority = useRef<Priority>("track");
   const isAnimating = useRef(false);
+  const textRef = useRef<TextInput>(null);
 
-  // Reset on open
+  // Animated values
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+  const cardScale = useRef(new Animated.Value(0.9)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+
+  // Interpolations
+  const rotate = translateX.interpolate({
+    inputRange: [-SCREEN_W / 2, 0, SCREEN_W / 2],
+    outputRange: ["-7deg", "0deg", "7deg"],
+    extrapolate: "clamp",
+  });
+
+  const urgentHintOpacity = translateX.interpolate({
+    inputRange: [-SWIPE_H, -20, 0],
+    outputRange: [1, 0.5, 0],
+    extrapolate: "clamp",
+  });
+
+  const rememberHintOpacity = translateX.interpolate({
+    inputRange: [0, 20, SWIPE_H],
+    outputRange: [0, 0.5, 1],
+    extrapolate: "clamp",
+  });
+
+  const saveHintOpacity = translateY.interpolate({
+    inputRange: [-SWIPE_UP, -20, 0],
+    outputRange: [1, 0.4, 0],
+    extrapolate: "clamp",
+  });
+
+  // Entrance animation
   useEffect(() => {
     if (visible) {
       setContent("");
       setDeadline(null);
       setShowCalendar(false);
-      setLivePriority("track");
-      dragX.setValue(0);
+      setDisplayPriority("track");
+      committedPriority.current = "track";
       isAnimating.current = false;
+      translateX.setValue(0);
+      translateY.setValue(0);
+
       Animated.parallel([
-        Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, tension: 80, friction: 8 }),
-        Animated.timing(cardOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.spring(cardScale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 72,
+          friction: 8,
+        }),
+        Animated.timing(cardOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
       ]).start();
     }
   }, [visible]);
 
-  // Track live priority from drag position
-  useEffect(() => {
-    const id = dragX.addListener(({ value }) => {
-      if (value < -30) setLivePriority("urgent");
-      else if (value > 30) setLivePriority("remember");
-      else setLivePriority("track");
-    });
-    return () => dragX.removeListener(id);
-  }, []);
+  // --- Helpers ---
+  const springBack = () => {
+    Animated.parallel([
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 140,
+        friction: 7,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 140,
+        friction: 7,
+      }),
+    ]).start();
+  };
 
-  const meta = PRIORITY_META[livePriority];
-
-  const cardBg = dragX.interpolate({
-    inputRange: [-SWIPE_THRESHOLD * 1.2, 0, SWIPE_THRESHOLD * 1.2],
-    outputRange: [
-      PRIORITY_META.urgent.darkBg,
-      PRIORITY_META.track.lightBg,
-      PRIORITY_META.remember.darkBg,
-    ],
-    extrapolate: "clamp",
-  });
-
-  const cardRotate = dragX.interpolate({
-    inputRange: [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD],
-    outputRange: ["-6deg", "0deg", "6deg"],
-    extrapolate: "clamp",
-  });
-
-  const urgentHintOpacity = dragX.interpolate({
-    inputRange: [-SWIPE_THRESHOLD, -20, 0],
-    outputRange: [1, 0.4, 0],
-    extrapolate: "clamp",
-  });
-
-  const rememberHintOpacity = dragX.interpolate({
-    inputRange: [0, 20, SWIPE_THRESHOLD],
-    outputRange: [0, 0.4, 1],
-    extrapolate: "clamp",
-  });
-
-  const flyOff = (priority: Priority, direction: "left" | "right" | "up") => {
+  const flyUp = () => {
     if (isAnimating.current) return;
     isAnimating.current = true;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    const toX =
-      direction === "left"
-        ? -SCREEN_WIDTH * 1.4
-        : direction === "right"
-        ? SCREEN_WIDTH * 1.4
-        : 0;
+    Keyboard.dismiss();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     Animated.parallel([
-      Animated.timing(dragX, { toValue: toX, duration: 220, useNativeDriver: false }),
-      Animated.timing(cardOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(translateY, {
+        toValue: -SCREEN_H,
+        duration: 320,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardOpacity, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 260,
+        useNativeDriver: true,
+      }),
     ]).start(() => {
       if (content.trim()) {
-        onSave({ title: content.trim(), priority, deadline });
+        onSave({
+          title: content.trim(),
+          priority: committedPriority.current,
+          deadline,
+        });
       }
       onClose();
     });
@@ -155,11 +191,10 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
     isAnimating.current = true;
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(dragX, { toValue: 0, useNativeDriver: false }),
-      Animated.timing(cardOpacity, { toValue: 0, duration: 160, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 160, useNativeDriver: true }),
+      Animated.timing(cardOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
       Animated.spring(cardScale, {
-        toValue: 0.92,
+        toValue: 0.9,
         useNativeDriver: true,
         tension: 80,
         friction: 8,
@@ -167,34 +202,72 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
     ]).start(onClose);
   };
 
+  // --- PanResponder ---
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
+      // Don't steal on tap (let TextInput focus)
+      onStartShouldSetPanResponder: () => false,
+      // Steal on clear directional move
+      onMoveShouldSetPanResponder: (_, g) => {
+        const horizontal = Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.2;
+        const upward = g.dy < -10 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2;
+        return horizontal || upward;
+      },
+      onPanResponderGrant: () => {
+        // Blur input so card can move freely
+        textRef.current?.blur();
+      },
       onPanResponderMove: (_, g) => {
-        dragX.setValue(g.dx);
+        translateX.setValue(g.dx);
+        // Allow upward movement; resist downward
+        translateY.setValue(g.dy < 0 ? g.dy : g.dy * 0.15);
+
+        // Update visual display priority
+        if (g.dx < -30) {
+          setDisplayPriority("urgent");
+        } else if (g.dx > 30) {
+          setDisplayPriority("remember");
+        } else {
+          setDisplayPriority(committedPriority.current);
+        }
       },
       onPanResponderRelease: (_, g) => {
         if (isAnimating.current) return;
-        if (g.dx < -SWIPE_THRESHOLD) {
-          flyOff("urgent", "left");
-        } else if (g.dx > SWIPE_THRESHOLD) {
-          flyOff("remember", "right");
-        } else {
-          Animated.spring(dragX, {
-            toValue: 0,
-            useNativeDriver: false,
-            tension: 120,
-            friction: 8,
-          }).start();
-          setLivePriority("track");
+
+        // Upward flick → SAVE
+        if (g.dy < -SWIPE_UP && Math.abs(g.dy) > Math.abs(g.dx)) {
+          flyUp();
+          return;
         }
+
+        // Strong left → commit urgent
+        if (g.dx < -SWIPE_H) {
+          committedPriority.current = "urgent";
+          setDisplayPriority("urgent");
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          springBack();
+          return;
+        }
+
+        // Strong right → commit remember
+        if (g.dx > SWIPE_H) {
+          committedPriority.current = "remember";
+          setDisplayPriority("remember");
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          springBack();
+          return;
+        }
+
+        // Otherwise snap back, keep committed
+        setDisplayPriority(committedPriority.current);
+        springBack();
       },
     })
   ).current;
 
   if (!visible) return null;
+
+  const meta = PRIORITY_META[displayPriority];
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -208,94 +281,84 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
 
       {/* Card */}
       <KeyboardAvoidingView
-        style={styles.kavWrapper}
+        style={styles.kav}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         pointerEvents="box-none"
       >
         <Animated.View
           style={[
-            styles.cardOuter,
+            styles.cardWrapper,
             {
               opacity: cardOpacity,
               transform: [
                 { scale: cardScale },
-                { translateX: dragX },
-                { rotate: cardRotate },
+                { translateX },
+                { translateY },
+                { rotate },
               ],
             },
           ]}
+          {...panResponder.panHandlers}
         >
-          <Animated.View style={[styles.card, { backgroundColor: cardBg }]}>
-            {/* Drag handle + swipe hints */}
-            <View {...panResponder.panHandlers} style={styles.dragZone}>
-              <Animated.View style={[styles.hintLeft, { opacity: urgentHintOpacity }]}>
-                <Feather name="chevron-left" size={14} color={PRIORITY_META.urgent.accent} />
-                <Text style={[styles.hintText, { color: PRIORITY_META.urgent.accent }]}>
-                  紧急
-                </Text>
+          {/* Card body — background driven by displayPriority */}
+          <View style={[styles.card, { backgroundColor: meta.lightBg }]}>
+            {/* Top hint row */}
+            <View style={styles.hintRow}>
+              <Animated.View style={[styles.hintGroup, { opacity: urgentHintOpacity }]}>
+                <Feather name="chevron-left" size={16} color={PRIORITY_META.urgent.accent} />
+                <Text style={[styles.hintText, { color: PRIORITY_META.urgent.accent }]}>紧急</Text>
               </Animated.View>
 
-              <View style={styles.priorityCenter}>
-                <View
-                  style={[
-                    styles.priorityPill,
-                    { backgroundColor: meta.accent + "22", borderColor: meta.accent + "44" },
-                  ]}
-                >
-                  <View style={[styles.priorityDot, { backgroundColor: meta.accent }]} />
-                  <Text style={[styles.priorityPillText, { color: meta.accent }]}>
-                    {meta.label}
-                  </Text>
-                </View>
+              <View style={[styles.priorityBadge, { borderColor: meta.accent + "55", backgroundColor: meta.accent + "18" }]}>
+                <View style={[styles.priorityDot, { backgroundColor: meta.accent }]} />
+                <Text style={[styles.priorityLabel, { color: meta.textColor }]}>{meta.label}</Text>
               </View>
 
-              <Animated.View style={[styles.hintRight, { opacity: rememberHintOpacity }]}>
-                <Text style={[styles.hintText, { color: PRIORITY_META.remember.accent }]}>
-                  记得做
-                </Text>
-                <Feather name="chevron-right" size={14} color={PRIORITY_META.remember.accent} />
+              <Animated.View style={[styles.hintGroup, { opacity: rememberHintOpacity }]}>
+                <Text style={[styles.hintText, { color: PRIORITY_META.remember.accent }]}>记得做</Text>
+                <Feather name="chevron-right" size={16} color={PRIORITY_META.remember.accent} />
               </Animated.View>
             </View>
 
-            {/* Handle bar */}
-            <View {...panResponder.panHandlers} style={styles.handleBar}>
-              <View style={[styles.handle, { backgroundColor: meta.accent + "44" }]} />
-            </View>
+            {/* Accent top line */}
+            <View style={[styles.accentLine, { backgroundColor: meta.accent + "55" }]} />
 
-            {/* Content input */}
+            {/* Main input */}
             <TextInput
-              style={[styles.contentInput, { color: colors.foreground }]}
-              placeholder="写下你的任务..."
-              placeholderTextColor={meta.accent + "88"}
+              ref={textRef}
+              style={[styles.textInput, { color: colors.foreground }]}
+              placeholder={"写下你的任务..."}
+              placeholderTextColor={meta.accent + "77"}
               value={content}
               onChangeText={setContent}
               multiline
-              maxLength={300}
+              maxLength={400}
               autoFocus
               textAlignVertical="top"
+              scrollEnabled={false}
             />
 
-            {/* Deadline */}
+            {/* Deadline button */}
             <View style={styles.deadlineSection}>
               <Pressable
                 style={[
                   styles.deadlineBtn,
                   {
-                    backgroundColor: deadline ? meta.accent + "18" : "rgba(0,0,0,0.05)",
-                    borderColor: deadline ? meta.accent + "55" : "rgba(0,0,0,0.08)",
+                    backgroundColor: deadline ? meta.accent + "15" : "rgba(0,0,0,0.04)",
+                    borderColor: deadline ? meta.accent + "50" : "rgba(0,0,0,0.07)",
                   },
                 ]}
                 onPress={() => setShowCalendar((v) => !v)}
               >
                 <Feather
                   name="calendar"
-                  size={14}
+                  size={15}
                   color={deadline ? meta.accent : colors.mutedForeground}
                 />
                 <Text
                   style={[
                     styles.deadlineBtnText,
-                    { color: deadline ? meta.accent : colors.mutedForeground },
+                    { color: deadline ? meta.textColor : colors.mutedForeground },
                   ]}
                 >
                   {deadline
@@ -303,202 +366,182 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
                         const [y, m, d] = deadline.split("-");
                         return `${y}年${Number(m)}月${Number(d)}日`;
                       })()
-                    : "设置截止日期"}
+                    : "点击设置截止日期"}
                 </Text>
                 {deadline && (
                   <Pressable
-                    hitSlop={8}
+                    hitSlop={10}
                     onPress={(e) => {
                       e.stopPropagation();
                       setDeadline(null);
                       setShowCalendar(false);
                     }}
                   >
-                    <Feather name="x" size={13} color={meta.accent} />
+                    <Feather name="x-circle" size={15} color={meta.accent} />
                   </Pressable>
                 )}
               </Pressable>
 
               {showCalendar && (
-                <View style={styles.calendarWrap}>
-                  <CalendarPicker
-                    selected={deadline}
-                    onSelect={(d) => {
-                      setDeadline(d);
-                      setShowCalendar(false);
-                      Haptics.selectionAsync();
-                    }}
-                    compact
-                  />
-                </View>
+                <CalendarPicker
+                  selected={deadline}
+                  onSelect={(d) => {
+                    setDeadline(d);
+                    setShowCalendar(false);
+                  }}
+                  compact
+                />
               )}
             </View>
 
-            {/* Bottom priority buttons */}
-            <View style={styles.actionsRow}>
-              {(["urgent", "track", "remember"] as Priority[]).map((p) => {
-                const m = PRIORITY_META[p];
-                const active = livePriority === p;
-                return (
-                  <Pressable
-                    key={p}
-                    style={[
-                      styles.actionBtn,
-                      {
-                        backgroundColor: active ? m.accent : m.accent + "22",
-                        borderColor: m.accent + (active ? "ff" : "44"),
-                      },
-                    ]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      if (!content.trim()) return;
-                      flyOff(
-                        p,
-                        p === "urgent" ? "left" : p === "remember" ? "right" : "up"
-                      );
-                    }}
-                  >
-                    <Text style={[styles.actionBtnText, { color: active ? "#fff" : m.accent }]}>
-                      {m.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            {/* Bottom: up-swipe save hint */}
+            <View style={styles.saveHintRow}>
+              <Animated.View style={[styles.saveHintActive, { opacity: saveHintOpacity }]}>
+                <Feather name="arrow-up" size={16} color={meta.accent} />
+                <Text style={[styles.saveHintTextActive, { color: meta.accent }]}>
+                  松手保存
+                </Text>
+              </Animated.View>
 
-            <Text style={[styles.swipeHint, { color: meta.accent + "88" }]}>
-              左划紧急 · 右划记得做 · 或点击上方按钮
-            </Text>
-          </Animated.View>
+              <View style={styles.saveHintIdle}>
+                <View style={[styles.upArrowIcon, { borderColor: meta.accent + "66" }]}>
+                  <Feather name="arrow-up" size={14} color={meta.accent + "aa"} />
+                </View>
+                <Text style={[styles.saveHintTextIdle, { color: meta.accent + "99" }]}>
+                  上划保存为「{meta.label}」
+                </Text>
+              </View>
+            </View>
+          </View>
         </Animated.View>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
+const CARD_W = SCREEN_W - 32;
+
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
-  kavWrapper: {
+  kav: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 20,
     pointerEvents: "box-none",
   } as any,
-  cardOuter: {
-    width: "100%",
-    maxWidth: 420,
+  cardWrapper: {
+    width: CARD_W,
+    maxWidth: 440,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    elevation: 20,
   },
   card: {
     borderRadius: 24,
-    padding: 20,
-    gap: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    elevation: 16,
+    padding: 22,
+    gap: 16,
+    overflow: "hidden",
   },
-  dragZone: {
+  hintRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: 2,
   },
-  hintLeft: {
+  hintGroup: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-  },
-  hintRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
+    minWidth: 60,
   },
   hintText: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
-  priorityCenter: {
-    alignItems: "center",
-  },
-  priorityPill: {
+  priorityBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    gap: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   priorityDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
   },
-  priorityPillText: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
+  priorityLabel: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
   },
-  handleBar: {
-    alignItems: "center",
-    marginTop: -8,
+  accentLine: {
+    height: 2,
+    borderRadius: 1,
+    marginHorizontal: -22,
   },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-  },
-  contentInput: {
-    fontSize: 18,
+  textInput: {
+    fontSize: 20,
     fontFamily: "Inter_400Regular",
-    lineHeight: 26,
-    minHeight: 100,
+    lineHeight: 30,
+    minHeight: 140,
     paddingTop: 4,
   },
   deadlineSection: {
-    gap: 8,
+    gap: 10,
   },
   deadlineBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 10,
+    gap: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 12,
     borderWidth: 1,
   },
   deadlineBtnText: {
     flex: 1,
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+  },
+  saveHintRow: {
+    alignItems: "center",
+    paddingTop: 4,
+    position: "relative",
+    height: 36,
+    justifyContent: "center",
+  },
+  saveHintIdle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  saveHintActive: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  upArrowIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveHintTextIdle: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
   },
-  calendarWrap: {
-    marginTop: 2,
-  },
-  actionsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 4,
-  },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: "center",
-    borderWidth: 1.5,
-  },
-  actionBtnText: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-  },
-  swipeHint: {
-    textAlign: "center",
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    marginTop: -4,
+  saveHintTextActive: {
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
   },
 });
