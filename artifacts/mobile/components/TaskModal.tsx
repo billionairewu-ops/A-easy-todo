@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { CalendarPicker } from "@/components/CalendarPicker";
 import { useColors } from "@/hooks/useColors";
 import type { Priority, Task } from "@/context/TaskContext";
 
@@ -25,129 +26,11 @@ interface Props {
   onClose: () => void;
 }
 
-const PRIORITY_OPTIONS: { value: Priority; label: string; emoji: string }[] = [
-  { value: "urgent", label: "紧急", emoji: "🔴" },
-  { value: "track", label: "需跟踪", emoji: "🟡" },
-  { value: "remember", label: "记得做", emoji: "🔵" },
+const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
+  { value: "urgent", label: "紧急" },
+  { value: "track", label: "需跟踪" },
+  { value: "remember", label: "记得做" },
 ];
-
-function todayString(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function parseDateParts(iso: string | null): { year: number; month: number; day: number } | null {
-  if (!iso) return null;
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return null;
-  return { year: y, month: m, day: d };
-}
-
-function toIso(year: number, month: number, day: number): string {
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-function daysInMonth(year: number, month: number): number {
-  return new Date(year, month, 0).getDate();
-}
-
-function DatePicker({
-  value,
-  onChange,
-  onClear,
-}: {
-  value: string | null;
-  onChange: (v: string) => void;
-  onClear: () => void;
-}) {
-  const colors = useColors();
-  const today = new Date();
-  const initial = parseDateParts(value) ?? {
-    year: today.getFullYear(),
-    month: today.getMonth() + 1,
-    day: today.getDate(),
-  };
-  const [year, setYear] = useState(initial.year);
-  const [month, setMonth] = useState(initial.month);
-  const [day, setDay] = useState(initial.day);
-
-  useEffect(() => {
-    const maxDay = daysInMonth(year, month);
-    const safeDay = Math.min(day, maxDay);
-    setDay(safeDay);
-  }, [year, month]);
-
-  const handleChange = (y: number, m: number, d: number) => {
-    const maxDay = daysInMonth(y, m);
-    const safeDay = Math.min(d, maxDay);
-    onChange(toIso(y, m, safeDay));
-  };
-
-  const adj = (setter: (v: number) => void, cur: number, min: number, max: number, delta: number) => {
-    const next = cur + delta;
-    if (next < min || next > max) return;
-    setter(next);
-    handleChange(
-      setter === setYear ? next : year,
-      setter === setMonth ? next : month,
-      setter === setDay ? next : day
-    );
-  };
-
-  const MONTH_LABELS = ["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"];
-
-  return (
-    <View style={[styles.datePicker, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-      <View style={styles.dateRow}>
-        <DateSpinner
-          label={`${year}年`}
-          onDec={() => adj(setYear, year, 2020, 2035, -1)}
-          onInc={() => adj(setYear, year, 2020, 2035, 1)}
-          colors={colors}
-        />
-        <DateSpinner
-          label={MONTH_LABELS[month - 1]}
-          onDec={() => adj(setMonth, month, 1, 12, -1)}
-          onInc={() => adj(setMonth, month, 1, 12, 1)}
-          colors={colors}
-        />
-        <DateSpinner
-          label={`${day}日`}
-          onDec={() => adj(setDay, day, 1, daysInMonth(year, month), -1)}
-          onInc={() => adj(setDay, day, 1, daysInMonth(year, month), 1)}
-          colors={colors}
-        />
-      </View>
-      <Pressable onPress={onClear} style={styles.clearDate}>
-        <Text style={[styles.clearDateText, { color: colors.mutedForeground }]}>清除日期</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function DateSpinner({
-  label,
-  onDec,
-  onInc,
-  colors,
-}: {
-  label: string;
-  onDec: () => void;
-  onInc: () => void;
-  colors: ReturnType<typeof useColors>;
-}) {
-  return (
-    <View style={styles.spinner}>
-      <Pressable onPress={onInc} hitSlop={8}>
-        <Feather name="chevron-up" size={18} color={colors.primary} />
-      </Pressable>
-      <Text style={[styles.spinnerLabel, { color: colors.foreground }]}>{label}</Text>
-      <Pressable onPress={onDec} hitSlop={8}>
-        <Feather name="chevron-down" size={18} color={colors.primary} />
-      </Pressable>
-    </View>
-  );
-}
 
 export function TaskModal({ visible, task, onSave, onDelete, onClose }: Props) {
   const colors = useColors();
@@ -156,7 +39,7 @@ export function TaskModal({ visible, task, onSave, onDelete, onClose }: Props) {
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<Priority>("remember");
   const [deadline, setDeadline] = useState<string | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -164,7 +47,7 @@ export function TaskModal({ visible, task, onSave, onDelete, onClose }: Props) {
       setDescription(task?.description ?? "");
       setPriority(task?.priority ?? "remember");
       setDeadline(task?.deadline ?? null);
-      setShowDatePicker(false);
+      setShowCalendar(false);
     }
   }, [visible, task]);
 
@@ -176,6 +59,11 @@ export function TaskModal({ visible, task, onSave, onDelete, onClose }: Props) {
 
   const accentColor =
     priority === "urgent" ? colors.urgent : priority === "track" ? colors.track : colors.remember;
+
+  const formatDeadline = (d: string) => {
+    const [y, m, day] = d.split("-");
+    return `${y}年${Number(m)}月${Number(day)}日`;
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -213,6 +101,7 @@ export function TaskModal({ visible, task, onSave, onDelete, onClose }: Props) {
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.body}
           >
+            {/* Title */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>任务标题</Text>
               <TextInput
@@ -233,6 +122,7 @@ export function TaskModal({ visible, task, onSave, onDelete, onClose }: Props) {
               />
             </View>
 
+            {/* Description */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>备注（选填）</Text>
               <TextInput
@@ -255,6 +145,7 @@ export function TaskModal({ visible, task, onSave, onDelete, onClose }: Props) {
               />
             </View>
 
+            {/* Priority */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>优先级</Text>
               <View style={styles.priorityRow}>
@@ -303,6 +194,7 @@ export function TaskModal({ visible, task, onSave, onDelete, onClose }: Props) {
               </View>
             </View>
 
+            {/* Deadline */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>截止日期</Text>
               <Pressable
@@ -314,7 +206,7 @@ export function TaskModal({ visible, task, onSave, onDelete, onClose }: Props) {
                     borderWidth: deadline ? 1.5 : 1,
                   },
                 ]}
-                onPress={() => setShowDatePicker((v) => !v)}
+                onPress={() => setShowCalendar((v) => !v)}
               >
                 <Feather
                   name="calendar"
@@ -327,33 +219,45 @@ export function TaskModal({ visible, task, onSave, onDelete, onClose }: Props) {
                     { color: deadline ? colors.foreground : colors.mutedForeground },
                   ]}
                 >
-                  {deadline
-                    ? (() => {
-                        const [y, m, d] = deadline.split("-");
-                        return `${y}年${Number(m)}月${Number(d)}日`;
-                      })()
-                    : "设置截止日期"}
+                  {deadline ? formatDeadline(deadline) : "点击选择日期"}
                 </Text>
                 <Feather
-                  name={showDatePicker ? "chevron-up" : "chevron-down"}
+                  name={showCalendar ? "chevron-up" : "chevron-down"}
                   size={16}
                   color={colors.mutedForeground}
                 />
               </Pressable>
 
-              {showDatePicker && (
-                <DatePicker
-                  value={deadline ?? todayString()}
-                  onChange={(v) => setDeadline(v)}
-                  onClear={() => {
-                    setDeadline(null);
-                    setShowDatePicker(false);
-                  }}
-                />
+              {showCalendar && (
+                <View style={styles.calendarWrap}>
+                  <CalendarPicker
+                    selected={deadline}
+                    onSelect={(d) => {
+                      setDeadline(d);
+                      setShowCalendar(false);
+                      Haptics.selectionAsync();
+                    }}
+                    compact
+                  />
+                  {deadline && (
+                    <Pressable
+                      style={styles.clearBtn}
+                      onPress={() => {
+                        setDeadline(null);
+                        setShowCalendar(false);
+                      }}
+                    >
+                      <Text style={[styles.clearBtnText, { color: colors.mutedForeground }]}>
+                        清除日期
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
               )}
             </View>
           </ScrollView>
 
+          {/* Actions */}
           <View style={styles.actions}>
             {task && onDelete && (
               <Pressable
@@ -406,7 +310,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingTop: 12,
     paddingHorizontal: 20,
-    maxHeight: "90%",
+    maxHeight: "95%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.12,
@@ -491,32 +395,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Inter_400Regular",
   },
-  datePicker: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    gap: 12,
+  calendarWrap: {
+    gap: 8,
   },
-  dateRow: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-  },
-  spinner: {
-    alignItems: "center",
-    gap: 6,
-    minWidth: 72,
-  },
-  spinnerLabel: {
-    fontSize: 16,
-    fontFamily: "Inter_600SemiBold",
-    textAlign: "center",
-    minWidth: 64,
-  },
-  clearDate: {
+  clearBtn: {
     alignItems: "center",
     paddingVertical: 4,
   },
-  clearDateText: {
+  clearBtnText: {
     fontSize: 13,
     fontFamily: "Inter_400Regular",
   },

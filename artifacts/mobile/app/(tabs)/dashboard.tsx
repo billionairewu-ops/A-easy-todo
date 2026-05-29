@@ -2,15 +2,14 @@ import { Feather } from "@expo/vector-icons";
 import React, { useMemo } from "react";
 import {
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { DonutChart } from "@/components/DonutChart";
 import { PriorityBadge } from "@/components/PriorityBadge";
-import type { Priority } from "@/context/TaskContext";
 import { useTasks, useTaskStats } from "@/context/TaskContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -26,74 +25,36 @@ function formatDeadlineShort(deadline: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-function ProgressRing({ percent, size = 72, color }: { percent: number; size?: number; color: string }) {
+function LegendItem({ color, label, value }: { color: string; label: string; value: number }) {
   const colors = useColors();
-  const r = (size - 8) / 2;
-  const circumference = 2 * Math.PI * r;
-  const stroke = circumference - (percent / 100) * circumference;
   return (
-    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: 6,
-          borderColor: colors.muted,
-          position: "absolute",
-        }}
-      />
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: 6,
-          borderColor: color,
-          position: "absolute",
-          transform: [{ rotate: "-90deg" }],
-          opacity: percent > 0 ? 1 : 0,
-          borderStyle: "solid",
-        }}
-      />
-      <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color }}>{percent}%</Text>
+    <View style={styles.legendItem}>
+      <View style={[styles.legendDot, { backgroundColor: color }]} />
+      <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>{label}</Text>
+      <Text style={[styles.legendValue, { color: colors.foreground }]}>{value}</Text>
     </View>
   );
 }
 
-function StatCard({
+function StatRow({
+  icon,
   label,
   value,
   color,
-  icon,
 }: {
+  icon: keyof typeof Feather.glyphMap;
   label: string;
   value: number;
   color: string;
-  icon: keyof typeof Feather.glyphMap;
 }) {
   const colors = useColors();
   return (
-    <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={[styles.statIconWrap, { backgroundColor: color + "18" }]}>
-        <Feather name={icon} size={20} color={color} />
+    <View style={[styles.statRow, { borderBottomColor: colors.border }]}>
+      <View style={[styles.statRowIcon, { backgroundColor: color + "18" }]}>
+        <Feather name={icon} size={15} color={color} />
       </View>
-      <Text style={[styles.statValue, { color: colors.foreground }]}>{value}</Text>
-      <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
-    </View>
-  );
-}
-
-function CategoryBar({ label, count, total, color }: { label: string; count: number; total: number; color: string }) {
-  const colors = useColors();
-  const pct = total > 0 ? (count / total) * 100 : 0;
-  return (
-    <View style={styles.categoryRow}>
-      <Text style={[styles.catLabel, { color: colors.foreground }]}>{label}</Text>
-      <View style={[styles.barTrack, { backgroundColor: colors.muted }]}>
-        <View style={[styles.barFill, { width: `${pct}%` as any, backgroundColor: color }]} />
-      </View>
-      <Text style={[styles.catCount, { color: colors.mutedForeground }]}>{count}</Text>
+      <Text style={[styles.statRowLabel, { color: colors.foreground }]}>{label}</Text>
+      <Text style={[styles.statRowValue, { color }]}>{value}</Text>
     </View>
   );
 }
@@ -124,13 +85,25 @@ export default function DashboardScreen() {
     });
   }, [tasks]);
 
-  const recentCompleted = useMemo(() =>
-    tasks
-      .filter((t) => t.completed)
-      .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""))
-      .slice(0, 3),
+  const recentCompleted = useMemo(
+    () =>
+      tasks
+        .filter((t) => t.completed)
+        .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""))
+        .slice(0, 3),
     [tasks]
   );
+
+  const completionSegments = [
+    { value: stats.completed, color: colors.success, label: "已完成" },
+    { value: stats.pending, color: colors.muted, label: "待完成" },
+  ];
+
+  const categorySegments = [
+    { value: stats.urgent, color: colors.urgent, label: "紧急" },
+    { value: stats.track, color: colors.track, label: "需跟踪" },
+    { value: stats.remember, color: colors.remember, label: "记得做" },
+  ];
 
   const topPad = Platform.OS === "web" ? 67 + 16 : insets.top + 16;
   const bottomPad = Platform.OS === "web" ? 34 + 90 : 90;
@@ -143,49 +116,88 @@ export default function DashboardScreen() {
     >
       <Text style={[styles.screenTitle, { color: colors.foreground }]}>仪表盘</Text>
 
-      <View style={[styles.heroCard, { backgroundColor: colors.primary }]}>
-        <View style={styles.heroLeft}>
-          <Text style={styles.heroLabel}>整体完成率</Text>
-          <Text style={styles.heroValue}>{stats.completionRate}%</Text>
-          <Text style={styles.heroSub}>
-            {stats.completed}/{stats.total} 任务已完成
-          </Text>
+      {/* Two donut charts side by side */}
+      <View style={styles.chartsRow}>
+        {/* Completion donut */}
+        <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.chartTitle, { color: colors.foreground }]}>完成率</Text>
+          <View style={styles.chartCenter}>
+            <DonutChart
+              segments={completionSegments}
+              size={130}
+              strokeWidth={16}
+              centerLabel={`${stats.completionRate}%`}
+              centerSub="完成"
+              emptyColor={colors.muted}
+            />
+          </View>
+          <View style={styles.chartLegend}>
+            <LegendItem color={colors.success} label="已完成" value={stats.completed} />
+            <LegendItem color={colors.muted} label="待完成" value={stats.pending} />
+          </View>
         </View>
-        <View style={styles.heroRight}>
-          <View style={styles.heroRingBg}>
-            <ProgressRing percent={stats.completionRate} size={80} color="#fff" />
+
+        {/* Category donut */}
+        <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.chartTitle, { color: colors.foreground }]}>任务分类</Text>
+          <View style={styles.chartCenter}>
+            <DonutChart
+              segments={categorySegments}
+              size={130}
+              strokeWidth={16}
+              centerLabel={`${stats.pending}`}
+              centerSub="待完成"
+              emptyColor={colors.muted}
+            />
+          </View>
+          <View style={styles.chartLegend}>
+            <LegendItem color={colors.urgent} label="紧急" value={stats.urgent} />
+            <LegendItem color={colors.track} label="跟踪" value={stats.track} />
+            <LegendItem color={colors.remember} label="记得" value={stats.remember} />
           </View>
         </View>
       </View>
 
-      <View style={styles.statsGrid}>
-        <StatCard label="待完成" value={stats.pending} color={colors.primary} icon="clock" />
-        <StatCard label="紧急" value={stats.urgent} color={colors.urgent} icon="alert-circle" />
-        <StatCard label="今天到期" value={stats.dueToday} color={colors.track} icon="calendar" />
-        <StatCard label="已逾期" value={stats.overdue} color={colors.destructive} icon="alert-triangle" />
-      </View>
-
+      {/* Stats detail card */}
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>分类分布</Text>
-        <View style={styles.catList}>
-          <CategoryBar label="紧急" count={stats.urgent} total={stats.pending} color={colors.urgent} />
-          <CategoryBar label="需跟踪" count={stats.track} total={stats.pending} color={colors.track} />
-          <CategoryBar label="记得做" count={stats.remember} total={stats.pending} color={colors.remember} />
-        </View>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>详细统计</Text>
+        <StatRow icon="layers" label="任务总数" value={stats.total} color={colors.primary} />
+        <StatRow icon="alert-circle" label="紧急任务" value={stats.urgent} color={colors.urgent} />
+        <StatRow icon="clock" label="今天到期" value={stats.dueToday} color={colors.track} />
+        <StatRow icon="alert-triangle" label="已逾期" value={stats.overdue} color={colors.destructive} />
+        <StatRow icon="check-circle" label="已完成" value={stats.completed} color={colors.success} />
       </View>
 
+      {/* Overdue */}
       {overdueTasks.length > 0 && (
-        <View style={[styles.section, { backgroundColor: "#FEF2F2", borderColor: colors.urgentLight }]}>
+        <View
+          style={[
+            styles.section,
+            { backgroundColor: "#FEF2F2", borderColor: colors.urgentLight },
+          ]}
+        >
           <View style={styles.sectionHeader}>
             <Feather name="alert-triangle" size={16} color={colors.urgent} />
             <Text style={[styles.sectionTitle, { color: colors.urgent }]}>
               已逾期 ({overdueTasks.length})
             </Text>
           </View>
-          {overdueTasks.map((t) => (
-            <View key={t.id} style={[styles.taskRow, { borderBottomColor: colors.urgentLight }]}>
+          {overdueTasks.map((t, i) => (
+            <View
+              key={t.id}
+              style={[
+                styles.taskRow,
+                {
+                  borderBottomColor: colors.urgentLight,
+                  borderBottomWidth: i < overdueTasks.length - 1 ? StyleSheet.hairlineWidth : 0,
+                },
+              ]}
+            >
               <PriorityBadge priority={t.priority} size="sm" />
-              <Text style={[styles.taskRowTitle, { color: colors.foreground }]} numberOfLines={1}>
+              <Text
+                style={[styles.taskRowTitle, { color: colors.foreground }]}
+                numberOfLines={1}
+              >
                 {t.title}
               </Text>
               {t.deadline && (
@@ -198,16 +210,29 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      {/* Upcoming */}
       {upcoming.length > 0 && (
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.sectionHeader}>
             <Feather name="calendar" size={16} color={colors.mutedForeground} />
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>即将到期</Text>
           </View>
-          {upcoming.map((t) => (
-            <View key={t.id} style={[styles.taskRow, { borderBottomColor: colors.border }]}>
+          {upcoming.map((t, i) => (
+            <View
+              key={t.id}
+              style={[
+                styles.taskRow,
+                {
+                  borderBottomColor: colors.border,
+                  borderBottomWidth: i < upcoming.length - 1 ? StyleSheet.hairlineWidth : 0,
+                },
+              ]}
+            >
               <PriorityBadge priority={t.priority} size="sm" />
-              <Text style={[styles.taskRowTitle, { color: colors.foreground }]} numberOfLines={1}>
+              <Text
+                style={[styles.taskRowTitle, { color: colors.foreground }]}
+                numberOfLines={1}
+              >
                 {t.title}
               </Text>
               {t.deadline && (
@@ -218,6 +243,8 @@ export default function DashboardScreen() {
                       color:
                         formatDeadlineShort(t.deadline) === "今天"
                           ? colors.track
+                          : formatDeadlineShort(t.deadline).startsWith("逾期")
+                          ? colors.urgent
                           : colors.mutedForeground,
                     },
                   ]}
@@ -230,19 +257,29 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      {/* Recent completed */}
       {recentCompleted.length > 0 && (
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.sectionHeader}>
             <Feather name="check-circle" size={16} color={colors.success} />
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>最近完成</Text>
           </View>
-          {recentCompleted.map((t) => (
-            <View key={t.id} style={[styles.taskRow, { borderBottomColor: colors.border }]}>
+          {recentCompleted.map((t, i) => (
+            <View
+              key={t.id}
+              style={[
+                styles.taskRow,
+                {
+                  borderBottomColor: colors.border,
+                  borderBottomWidth: i < recentCompleted.length - 1 ? StyleSheet.hairlineWidth : 0,
+                },
+              ]}
+            >
               <Feather name="check-circle" size={14} color={colors.success} />
               <Text
                 style={[
                   styles.taskRowTitle,
-                  { color: colors.mutedForeground, textDecorationLine: "line-through" },
+                  { color: colors.mutedForeground, textDecorationLine: "line-through", flex: 1 },
                 ]}
                 numberOfLines={1}
               >
@@ -268,9 +305,7 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-  },
+  scroll: { flex: 1 },
   content: {
     paddingHorizontal: 16,
     gap: 14,
@@ -280,77 +315,59 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     marginBottom: 4,
   },
-  heroCard: {
-    borderRadius: 18,
-    padding: 24,
+  chartsRow: {
     flexDirection: "row",
-    alignItems: "center",
+    gap: 12,
   },
-  heroLeft: {
+  chartCard: {
     flex: 1,
-    gap: 4,
-  },
-  heroLabel: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-  },
-  heroValue: {
-    color: "#fff",
-    fontSize: 40,
-    fontFamily: "Inter_700Bold",
-    lineHeight: 46,
-  },
-  heroSub: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-  },
-  heroRight: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroRingBg: {
-    opacity: 0.9,
-  },
-  statsGrid: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 12,
+    padding: 14,
     alignItems: "center",
-    gap: 6,
+    gap: 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 1,
   },
-  statIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statValue: {
-    fontSize: 22,
+  chartTitle: {
+    fontSize: 13,
     fontFamily: "Inter_700Bold",
+    alignSelf: "flex-start",
   },
-  statLabel: {
+  chartCenter: {
+    alignItems: "center",
+  },
+  chartLegend: {
+    width: "100%",
+    gap: 4,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  legendDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  legendLabel: {
+    flex: 1,
     fontSize: 11,
-    fontFamily: "Inter_500Medium",
-    textAlign: "center",
+    fontFamily: "Inter_400Regular",
+  },
+  legendValue: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
   },
   section: {
     borderRadius: 16,
     borderWidth: 1,
     padding: 16,
-    gap: 12,
+    gap: 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -363,44 +380,37 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: "Inter_700Bold",
   },
-  catList: {
-    gap: 10,
-  },
-  categoryRow: {
+  statRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  catLabel: {
-    width: 52,
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
+  statRowIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  barTrack: {
+  statRowLabel: {
     flex: 1,
-    height: 8,
-    borderRadius: 4,
-    overflow: "hidden",
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
   },
-  barFill: {
-    height: 8,
-    borderRadius: 4,
-  },
-  catCount: {
-    width: 24,
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-    textAlign: "right",
+  statRowValue: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
   },
   taskRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 7,
   },
   taskRowTitle: {
     flex: 1,
