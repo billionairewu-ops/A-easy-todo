@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EmptyState } from "@/components/EmptyState";
+import { SwipeTaskCard } from "@/components/SwipeTaskCard";
 import { TaskCard } from "@/components/TaskCard";
 import { TaskModal } from "@/components/TaskModal";
 import type { Priority, Task } from "@/context/TaskContext";
@@ -30,7 +31,9 @@ export default function TasksScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { tasks, addTask, updateTask, deleteTask, toggleComplete, filter, setFilter } = useTasks();
-  const [modalVisible, setModalVisible] = useState(false);
+
+  const [swipeCardVisible, setSwipeCardVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const filtered = useMemo(() => {
@@ -46,9 +49,9 @@ export default function TasksScreen() {
         if (b.deadline) return 1;
         return a.createdAt.localeCompare(b.createdAt);
       });
-    const done = base.filter((t) => t.completed).sort((a, b) =>
-      (b.completedAt ?? "").localeCompare(a.completedAt ?? "")
-    );
+    const done = base
+      .filter((t) => t.completed)
+      .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
     return [...pending, ...done];
   }, [tasks, filter]);
 
@@ -61,30 +64,28 @@ export default function TasksScreen() {
     return colors.primary;
   };
 
-  const openAdd = () => {
-    setEditingTask(null);
-    setModalVisible(true);
-  };
-
   const openEdit = (t: Task) => {
     setEditingTask(t);
-    setModalVisible(true);
+    setEditModalVisible(true);
   };
 
-  const handleSave = (data: { title: string; description: string; priority: Priority; deadline: string | null }) => {
+  const handleEditSave = (data: {
+    title: string;
+    description: string;
+    priority: Priority;
+    deadline: string | null;
+  }) => {
     if (editingTask) {
       updateTask(editingTask.id, data);
-    } else {
-      addTask({ ...data, completed: false });
     }
-    setModalVisible(false);
+    setEditModalVisible(false);
     setEditingTask(null);
   };
 
   const handleDelete = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     deleteTask(id);
-    setModalVisible(false);
+    setEditModalVisible(false);
     setEditingTask(null);
   };
 
@@ -93,6 +94,7 @@ export default function TasksScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
       <View style={[styles.topBar, { paddingTop: topPad, backgroundColor: colors.background }]}>
         <View style={styles.titleRow}>
           <Text style={[styles.screenTitle, { color: colors.foreground }]}>任务</Text>
@@ -140,6 +142,7 @@ export default function TasksScreen() {
         />
       </View>
 
+      {/* Task list */}
       <FlatList
         data={filtered}
         keyExtractor={(t) => t.id}
@@ -170,20 +173,38 @@ export default function TasksScreen() {
         )}
       />
 
+      {/* FAB */}
       <Pressable
-        style={[styles.fab, { backgroundColor: colors.primary, bottom: bottomPad - 60 }]}
-        onPress={openAdd}
+        style={[
+          styles.fab,
+          { backgroundColor: colors.primary, bottom: bottomPad - 60 },
+          swipeCardVisible && styles.fabHidden,
+        ]}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setSwipeCardVisible(true);
+        }}
       >
         <Feather name="plus" size={26} color="#fff" />
       </Pressable>
 
+      {/* Swipe card overlay — for creating new tasks */}
+      <SwipeTaskCard
+        visible={swipeCardVisible}
+        onSave={({ title, priority, deadline }) => {
+          addTask({ title, description: "", priority, deadline, completed: false });
+        }}
+        onClose={() => setSwipeCardVisible(false)}
+      />
+
+      {/* Edit modal — for updating existing tasks */}
       <TaskModal
-        visible={modalVisible}
+        visible={editModalVisible}
         task={editingTask}
-        onSave={handleSave}
+        onSave={handleEditSave}
         onDelete={editingTask ? () => handleDelete(editingTask.id) : undefined}
         onClose={() => {
-          setModalVisible(false);
+          setEditModalVisible(false);
           setEditingTask(null);
         }}
       />
@@ -255,5 +276,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 8,
+    zIndex: 10,
   },
+  fabHidden: {
+    opacity: 0,
+    pointerEvents: "none",
+  } as any,
 });
