@@ -18,6 +18,7 @@ import { TaskModal } from "@/components/TaskModal";
 import type { Priority, Task } from "@/context/TaskContext";
 import { useTasks } from "@/context/TaskContext";
 import { useColors } from "@/hooks/useColors";
+import { useSwipeTabs } from "@/hooks/useSwipeTabs";
 
 function todayYMD(): string {
   const d = new Date();
@@ -29,6 +30,7 @@ export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const { tasks, updateTask, deleteTask, toggleComplete } = useTasks();
 
+  const swipePan = useSwipeTabs(1);
   const [selected, setSelected] = useState<string>(todayYMD());
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -87,7 +89,7 @@ export default function CalendarScreen() {
   }, [selected]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]} {...swipePan.panHandlers}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scroll, { paddingTop: topPad, paddingBottom: bottomPad }]}

@@ -12,6 +12,7 @@ import { DonutChart } from "@/components/DonutChart";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { useTasks, useTaskStats } from "@/context/TaskContext";
 import { useColors } from "@/hooks/useColors";
+import { useSwipeTabs } from "@/hooks/useSwipeTabs";
 
 function formatDeadlineShort(deadline: string): string {
   const d = new Date(deadline);
@@ -105,10 +106,12 @@ export default function DashboardScreen() {
     { value: stats.remember, color: colors.remember, label: "记得做" },
   ];
 
+  const swipePan = useSwipeTabs(2);
   const topPad = Platform.OS === "web" ? 67 + 16 : insets.top + 16;
   const bottomPad = Platform.OS === "web" ? 34 + 90 : 90;
 
   return (
+    <View style={{ flex: 1 }} {...swipePan.panHandlers}>
     <ScrollView
       style={[styles.scroll, { backgroundColor: colors.background }]}
       contentContainerStyle={[styles.content, { paddingTop: topPad, paddingBottom: bottomPad }]}
@@ -301,6 +304,7 @@ export default function DashboardScreen() {
         </View>
       )}
     </ScrollView>
+    </View>
   );
 }
 

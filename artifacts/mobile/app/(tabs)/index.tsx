@@ -17,6 +17,7 @@ import { TaskModal } from "@/components/TaskModal";
 import type { Priority, Task } from "@/context/TaskContext";
 import { useTasks } from "@/context/TaskContext";
 import { useColors } from "@/hooks/useColors";
+import { useSwipeTabs } from "@/hooks/useSwipeTabs";
 
 const FILTERS: { value: Priority | "all"; label: string }[] = [
   { value: "all", label: "全部" },
@@ -32,6 +33,7 @@ export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const { tasks, addTask, updateTask, deleteTask, toggleComplete, filter, setFilter } = useTasks();
 
+  const swipePan = useSwipeTabs(0);
   const [swipeCardVisible, setSwipeCardVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -93,7 +95,7 @@ export default function TasksScreen() {
   const bottomPad = Platform.OS === "web" ? 34 + 90 : 90;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]} {...swipePan.panHandlers}>
       {/* Header */}
       <View style={[styles.topBar, { paddingTop: topPad, backgroundColor: colors.background }]}>
         <View style={styles.titleRow}>
@@ -177,7 +179,7 @@ export default function TasksScreen() {
       <Pressable
         style={[
           styles.fab,
-          { backgroundColor: colors.primary, bottom: bottomPad - 60 },
+          { backgroundColor: colors.primary, bottom: insets.bottom + 76 },
           swipeCardVisible && styles.fabHidden,
         ]}
         onPress={() => {

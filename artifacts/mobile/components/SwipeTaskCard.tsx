@@ -30,9 +30,9 @@ interface Props {
 }
 
 const META: Record<Priority, { label: string; bg: string; tint: string; accent: string }> = {
-  urgent:   { label: "紧急",   bg: "#FEF2F2", tint: "#FEE2E2", accent: "#EF4444" },
-  track:    { label: "需跟踪", bg: "#FFFBEB", tint: "#FEF3C7", accent: "#F59E0B" },
-  remember: { label: "记得做", bg: "#EFF6FF", tint: "#DBEAFE", accent: "#3B82F6" },
+  urgent:   { label: "紧急",   bg: "#FFF0EF", tint: "#FFCCCC", accent: "#FF1F1F" },
+  track:    { label: "需跟踪", bg: "#FFF8E6", tint: "#FFE066", accent: "#F08A00" },
+  remember: { label: "记得做", bg: "#EFF2FF", tint: "#C0D0FF", accent: "#1C44F5" },
 };
 
 export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
@@ -146,16 +146,17 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
       onPanResponderMove: (_, g) => {
         translateX.setValue(g.dx);
         translateY.setValue(g.dy * 0.1);
+        // RIGHT → 紧急, LEFT → 记得做
         setDisplayPriority(
-          g.dx < -20 ? "urgent" : g.dx > 20 ? "remember" : committedPriority.current
+          g.dx > 20 ? "urgent" : g.dx < -20 ? "remember" : committedPriority.current
         );
       },
       onPanResponderRelease: (_, g) => {
-        if (g.dx < -SWIPE_H) {
+        if (g.dx > SWIPE_H) {
           committedPriority.current = "urgent";
           setDisplayPriority("urgent");
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        } else if (g.dx > SWIPE_H) {
+        } else if (g.dx < -SWIPE_H) {
           committedPriority.current = "remember";
           setDisplayPriority("remember");
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -227,8 +228,8 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
             {/* ── Zone A: Header (left / right swipe) ─────────────────── */}
             <View {...headerPan.panHandlers} style={[styles.headerZone, { backgroundColor: m.tint }]}>
               <View style={styles.headerSide}>
-                <Feather name="chevron-left" size={18} color={META.urgent.accent} />
-                <Text style={[styles.sideText, { color: META.urgent.accent }]}>紧急</Text>
+                <Feather name="chevron-left" size={18} color={META.remember.accent} />
+                <Text style={[styles.sideText, { color: META.remember.accent }]}>记得做</Text>
               </View>
 
               <View style={[styles.badge, { borderColor: m.accent + "60", backgroundColor: m.accent + "18" }]}>
@@ -237,8 +238,8 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
               </View>
 
               <View style={[styles.headerSide, styles.headerSideRight]}>
-                <Text style={[styles.sideText, { color: META.remember.accent }]}>记得做</Text>
-                <Feather name="chevron-right" size={18} color={META.remember.accent} />
+                <Text style={[styles.sideText, { color: META.urgent.accent }]}>紧急</Text>
+                <Feather name="chevron-right" size={18} color={META.urgent.accent} />
               </View>
             </View>
 
