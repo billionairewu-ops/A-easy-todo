@@ -50,18 +50,38 @@ export function TaskCard({ task, onToggle, onEdit, onDelete }: Props) {
         Math.abs(g.dx) > 8 && Math.abs(g.dy) < Math.abs(g.dx),
       onPanResponderMove: (_, g) => {
         if (g.dx < 0) {
-          translateX.setValue(Math.max(g.dx, -80));
+          // Rubber-band: linear until -80 (delete reveal), then 20% damping beyond
+          const x = g.dx > -80 ? g.dx : -80 + (g.dx + 80) * 0.2;
+          translateX.setValue(Math.max(x, -96));
         } else if (deleteVisible.current) {
+          // Swiping right to close delete — slight resistance
           translateX.setValue(Math.min(g.dx - 80, 0));
         }
       },
       onPanResponderRelease: (_, g) => {
-        if (g.dx < -40) {
-          Animated.spring(translateX, { toValue: -80, useNativeDriver: true }).start();
-          deleteVisible.current = true;
+        const spring = (toValue: number) =>
+          Animated.spring(translateX, {
+            toValue,
+            useNativeDriver: true,
+            tension: 180,
+            friction: 12,
+          }).start();
+
+        if (!deleteVisible.current) {
+          if (g.dx < -40 || g.vx < -0.5) {
+            deleteVisible.current = true;
+            spring(-80);
+          } else {
+            spring(0);
+          }
         } else {
-          Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
-          deleteVisible.current = false;
+          // Delete revealed: swipe right >40px or fast velocity to close
+          if (g.dx > 40 || g.vx > 0.5) {
+            deleteVisible.current = false;
+            spring(0);
+          } else {
+            spring(-80);
+          }
         }
       },
     })

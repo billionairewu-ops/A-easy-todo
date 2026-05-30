@@ -29,10 +29,11 @@ interface Props {
   onClose: () => void;
 }
 
-const META: Record<Priority, { label: string; bg: string; tint: string; accent: string }> = {
-  urgent:   { label: "紧急",   bg: "#FFF0EF", tint: "#FFCCCC", accent: "#FF1F1F" },
-  track:    { label: "需跟踪", bg: "#FFF8E6", tint: "#FFE066", accent: "#F08A00" },
-  remember: { label: "记得做", bg: "#EFF2FF", tint: "#C0D0FF", accent: "#1C44F5" },
+// Three-level palette: card (body) → header (slightly richer) → save (deepest)
+const META: Record<Priority, { label: string; card: string; header: string; save: string; accent: string }> = {
+  urgent:   { label: "紧急",   card: "#FFE4E4", header: "#FFC8C8", save: "#FFB0B0", accent: "#FF1F1F" },
+  track:    { label: "需跟踪", card: "#FFF1CC", header: "#FFE28A", save: "#FFD460", accent: "#F08A00" },
+  remember: { label: "记得做", card: "#DDE8FF", header: "#C2D4FF", save: "#ABBCFF", accent: "#1C44F5" },
 };
 
 export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
@@ -223,16 +224,16 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
             },
           ]}
         >
-          <View style={[styles.card, { backgroundColor: m.bg }]}>
+          <View style={[styles.card, { backgroundColor: m.card }]}>
 
             {/* ── Zone A: Header (left / right swipe) ─────────────────── */}
-            <View {...headerPan.panHandlers} style={[styles.headerZone, { backgroundColor: m.tint }]}>
+            <View {...headerPan.panHandlers} style={[styles.headerZone, { backgroundColor: m.header }]}>
               <View style={styles.headerSide}>
                 <Feather name="chevron-left" size={18} color={META.remember.accent} />
                 <Text style={[styles.sideText, { color: META.remember.accent }]}>记得做</Text>
               </View>
 
-              <View style={[styles.badge, { borderColor: m.accent + "60", backgroundColor: m.accent + "18" }]}>
+              <View style={[styles.badge, { borderColor: m.accent + "55", backgroundColor: "rgba(255,255,255,0.45)" }]}>
                 <View style={[styles.dot, { backgroundColor: m.accent }]} />
                 <Text style={[styles.badgeText, { color: m.accent }]}>{m.label}</Text>
               </View>
@@ -266,8 +267,8 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
                 style={[
                   styles.deadlineBtn,
                   {
-                    backgroundColor: deadline ? m.accent + "14" : "rgba(0,0,0,0.04)",
-                    borderColor: deadline ? m.accent + "50" : "rgba(0,0,0,0.08)",
+                    backgroundColor: deadline ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.35)",
+                    borderColor: deadline ? m.accent + "55" : "rgba(255,255,255,0.7)",
                   },
                 ]}
                 onPress={() => setShowCal((v) => !v)}
@@ -299,8 +300,8 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
               style={[
                 styles.saveZone,
                 {
-                  backgroundColor: m.accent + "18",
-                  borderColor: m.accent + "44",
+                  backgroundColor: m.save,
+                  borderColor: m.accent + "50",
                   transform: [{ scale: saveScaleAnim }],
                 },
               ]}
