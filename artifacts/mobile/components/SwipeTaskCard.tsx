@@ -19,8 +19,8 @@ import type { Priority } from "@/context/TaskContext";
 import { useColors } from "@/hooks/useColors";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
-const SWIPE_H = 80;   // left/right threshold to commit priority
-const SWIPE_UP = 70;  // upward threshold to save
+const SWIPE_H = 75;   // left/right to commit priority
+const SWIPE_UP = 55;  // upward to save
 
 interface Props {
   visible: boolean;
@@ -28,129 +28,63 @@ interface Props {
   onClose: () => void;
 }
 
-const PRIORITY_META: Record<
-  Priority,
-  { label: string; lightBg: string; darkBg: string; accent: string; textColor: string }
-> = {
-  urgent: {
-    label: "紧急",
-    lightBg: "#FEF2F2",
-    darkBg: "#FEE2E2",
-    accent: "#EF4444",
-    textColor: "#DC2626",
-  },
-  track: {
-    label: "需跟踪",
-    lightBg: "#FFFBEB",
-    darkBg: "#FEF3C7",
-    accent: "#F59E0B",
-    textColor: "#D97706",
-  },
-  remember: {
-    label: "记得做",
-    lightBg: "#EFF6FF",
-    darkBg: "#DBEAFE",
-    accent: "#3B82F6",
-    textColor: "#2563EB",
-  },
+const META: Record<Priority, { label: string; bg: string; tint: string; accent: string }> = {
+  urgent:   { label: "紧急",   bg: "#FEF2F2", tint: "#FEE2E2", accent: "#EF4444" },
+  track:    { label: "需跟踪", bg: "#FFFBEB", tint: "#FEF3C7", accent: "#F59E0B" },
+  remember: { label: "记得做", bg: "#EFF6FF", tint: "#DBEAFE", accent: "#3B82F6" },
 };
 
 export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
   const colors = useColors();
-
   const [content, setContent] = useState("");
   const [deadline, setDeadline] = useState<string | null>(null);
-  const [showCalendar, setShowCalendar] = useState(false);
-  // Visually committed priority (drives background + bottom hint)
+  const [showCal, setShowCal] = useState(false);
   const [displayPriority, setDisplayPriority] = useState<Priority>("track");
 
-  // Refs
   const committedPriority = useRef<Priority>("track");
   const isAnimating = useRef(false);
   const textRef = useRef<TextInput>(null);
 
-  // Animated values
+  // Animated values — all useNativeDriver: true
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
-  const cardScale = useRef(new Animated.Value(0.9)).current;
+  const cardScale = useRef(new Animated.Value(0.88)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const saveZoneScale = useRef(new Animated.Value(1)).current;
 
-  // Interpolations
   const rotate = translateX.interpolate({
     inputRange: [-SCREEN_W / 2, 0, SCREEN_W / 2],
-    outputRange: ["-7deg", "0deg", "7deg"],
+    outputRange: ["-8deg", "0deg", "8deg"],
     extrapolate: "clamp",
   });
 
-  const urgentHintOpacity = translateX.interpolate({
-    inputRange: [-SWIPE_H, -20, 0],
-    outputRange: [1, 0.5, 0],
-    extrapolate: "clamp",
-  });
-
-  const rememberHintOpacity = translateX.interpolate({
-    inputRange: [0, 20, SWIPE_H],
-    outputRange: [0, 0.5, 1],
-    extrapolate: "clamp",
-  });
-
-  const saveHintOpacity = translateY.interpolate({
-    inputRange: [-SWIPE_UP, -20, 0],
-    outputRange: [1, 0.4, 0],
-    extrapolate: "clamp",
-  });
-
-  // Entrance animation
+  // ── Entrance / Reset ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (visible) {
-      setContent("");
-      setDeadline(null);
-      setShowCalendar(false);
-      setDisplayPriority("track");
-      committedPriority.current = "track";
-      isAnimating.current = false;
-      translateX.setValue(0);
-      translateY.setValue(0);
+    if (!visible) return;
+    setContent("");
+    setDeadline(null);
+    setShowCal(false);
+    setDisplayPriority("track");
+    committedPriority.current = "track";
+    isAnimating.current = false;
+    translateX.setValue(0);
+    translateY.setValue(0);
+    saveZoneScale.setValue(1);
 
-      Animated.parallel([
-        Animated.spring(cardScale, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 72,
-          friction: 8,
-        }),
-        Animated.timing(cardOpacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
+    Animated.parallel([
+      Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, tension: 70, friction: 8 }),
+      Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+    ]).start();
   }, [visible]);
 
-  // --- Helpers ---
-  const springBack = () => {
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const springBack = () =>
     Animated.parallel([
-      Animated.spring(translateX, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 140,
-        friction: 7,
-      }),
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 140,
-        friction: 7,
-      }),
+      Animated.spring(translateX, { toValue: 0, useNativeDriver: true, tension: 160, friction: 8 }),
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 160, friction: 8 }),
     ]).start();
-  };
 
   const flyUp = () => {
     if (isAnimating.current) return;
@@ -159,28 +93,12 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     Animated.parallel([
-      Animated.timing(translateY, {
-        toValue: -SCREEN_H,
-        duration: 320,
-        useNativeDriver: true,
-      }),
-      Animated.timing(cardOpacity, {
-        toValue: 0,
-        duration: 280,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: 260,
-        useNativeDriver: true,
-      }),
+      Animated.timing(translateY, { toValue: -SCREEN_H, duration: 300, useNativeDriver: true }),
+      Animated.timing(cardOpacity, { toValue: 0, duration: 260, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 240, useNativeDriver: true }),
     ]).start(() => {
       if (content.trim()) {
-        onSave({
-          title: content.trim(),
-          priority: committedPriority.current,
-          deadline,
-        });
+        onSave({ title: content.trim(), priority: committedPriority.current, deadline });
       }
       onClose();
     });
@@ -193,89 +111,71 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
     Animated.parallel([
       Animated.timing(cardOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
-      Animated.spring(cardScale, {
-        toValue: 0.9,
-        useNativeDriver: true,
-        tension: 80,
-        friction: 8,
-      }),
+      Animated.spring(cardScale, { toValue: 0.88, useNativeDriver: true }),
     ]).start(onClose);
   };
 
-  // --- PanResponder ---
-  const panResponder = useRef(
+  // ── PanResponder A: Header — left / right ─────────────────────────────────
+  const headerPan = useRef(
     PanResponder.create({
-      // Don't steal on tap (let TextInput focus)
-      onStartShouldSetPanResponder: () => false,
-      // Steal on clear directional move
-      onMoveShouldSetPanResponder: (_, g) => {
-        const horizontal = Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.2;
-        const upward = g.dy < -10 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2;
-        return horizontal || upward;
-      },
-      onPanResponderGrant: () => {
-        // Blur input so card can move freely
-        textRef.current?.blur();
-      },
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => { textRef.current?.blur(); },
       onPanResponderMove: (_, g) => {
         translateX.setValue(g.dx);
-        // Allow upward movement; resist downward
-        translateY.setValue(g.dy < 0 ? g.dy : g.dy * 0.15);
-
-        // Update visual display priority
-        if (g.dx < -30) {
-          setDisplayPriority("urgent");
-        } else if (g.dx > 30) {
-          setDisplayPriority("remember");
-        } else {
-          setDisplayPriority(committedPriority.current);
-        }
+        translateY.setValue(g.dy * 0.15);
+        setDisplayPriority(
+          g.dx < -20 ? "urgent" : g.dx > 20 ? "remember" : committedPriority.current
+        );
       },
       onPanResponderRelease: (_, g) => {
-        if (isAnimating.current) return;
-
-        // Upward flick → SAVE
-        if (g.dy < -SWIPE_UP && Math.abs(g.dy) > Math.abs(g.dx)) {
-          flyUp();
-          return;
-        }
-
-        // Strong left → commit urgent
         if (g.dx < -SWIPE_H) {
           committedPriority.current = "urgent";
           setDisplayPriority("urgent");
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          springBack();
-          return;
-        }
-
-        // Strong right → commit remember
-        if (g.dx > SWIPE_H) {
+        } else if (g.dx > SWIPE_H) {
           committedPriority.current = "remember";
           setDisplayPriority("remember");
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          springBack();
-          return;
+        } else {
+          setDisplayPriority(committedPriority.current);
         }
-
-        // Otherwise snap back, keep committed
-        setDisplayPriority(committedPriority.current);
         springBack();
+      },
+    })
+  ).current;
+
+  // ── PanResponder B: Save zone — upward ───────────────────────────────────
+  const savePan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => { Keyboard.dismiss(); },
+      onPanResponderMove: (_, g) => {
+        if (g.dy < 0) {
+          translateY.setValue(g.dy);
+          // Save zone grows as card lifts
+          const progress = Math.min(Math.abs(g.dy) / SWIPE_UP, 1);
+          saveZoneScale.setValue(1 + progress * 0.12);
+        }
+      },
+      onPanResponderRelease: (_, g) => {
+        saveZoneScale.setValue(1);
+        if (g.dy < -SWIPE_UP) {
+          flyUp();
+        } else {
+          Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 160, friction: 8 }).start();
+        }
       },
     })
   ).current;
 
   if (!visible) return null;
 
-  const meta = PRIORITY_META[displayPriority];
+  const m = META[displayPriority];
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* Backdrop */}
-      <Animated.View
-        style={[styles.backdrop, { opacity: backdropOpacity }]}
-        pointerEvents="auto"
-      >
+      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]} pointerEvents="auto">
         <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
       </Animated.View>
 
@@ -290,128 +190,97 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
             styles.cardWrapper,
             {
               opacity: cardOpacity,
-              transform: [
-                { scale: cardScale },
-                { translateX },
-                { translateY },
-                { rotate },
-              ],
+              transform: [{ scale: cardScale }, { translateX }, { translateY }, { rotate }],
             },
           ]}
-          {...panResponder.panHandlers}
         >
-          {/* Card body — background driven by displayPriority */}
-          <View style={[styles.card, { backgroundColor: meta.lightBg }]}>
-            {/* Top hint row */}
-            <View style={styles.hintRow}>
-              <Animated.View style={[styles.hintGroup, { opacity: urgentHintOpacity }]}>
-                <Feather name="chevron-left" size={16} color={PRIORITY_META.urgent.accent} />
-                <Text style={[styles.hintText, { color: PRIORITY_META.urgent.accent }]}>紧急</Text>
-              </Animated.View>
+          <View style={[styles.card, { backgroundColor: m.bg }]}>
 
-              <View style={[styles.priorityBadge, { borderColor: meta.accent + "55", backgroundColor: meta.accent + "18" }]}>
-                <View style={[styles.priorityDot, { backgroundColor: meta.accent }]} />
-                <Text style={[styles.priorityLabel, { color: meta.textColor }]}>{meta.label}</Text>
+            {/* ── Zone A: Header (left / right swipe) ─────────────────── */}
+            <View {...headerPan.panHandlers} style={[styles.headerZone, { backgroundColor: m.tint }]}>
+              <View style={styles.headerLeft}>
+                <Feather name="chevron-left" size={18} color={META.urgent.accent} />
+                <Text style={[styles.hintSideText, { color: META.urgent.accent }]}>紧急</Text>
               </View>
 
-              <Animated.View style={[styles.hintGroup, { opacity: rememberHintOpacity }]}>
-                <Text style={[styles.hintText, { color: PRIORITY_META.remember.accent }]}>记得做</Text>
-                <Feather name="chevron-right" size={16} color={PRIORITY_META.remember.accent} />
-              </Animated.View>
+              <View style={[styles.priorityBadge, { borderColor: m.accent + "60", backgroundColor: m.accent + "18" }]}>
+                <View style={[styles.dot, { backgroundColor: m.accent }]} />
+                <Text style={[styles.priorityText, { color: m.accent }]}>{m.label}</Text>
+              </View>
+
+              <View style={styles.headerRight}>
+                <Text style={[styles.hintSideText, { color: META.remember.accent }]}>记得做</Text>
+                <Feather name="chevron-right" size={18} color={META.remember.accent} />
+              </View>
             </View>
 
-            {/* Accent top line */}
-            <View style={[styles.accentLine, { backgroundColor: meta.accent + "55" }]} />
+            <Text style={[styles.zoneHint, { color: m.accent + "88" }]}>
+              ← 左右拖动选分类
+            </Text>
 
-            {/* Main input */}
+            {/* ── Zone B: Text input (free for typing) ────────────────── */}
             <TextInput
               ref={textRef}
               style={[styles.textInput, { color: colors.foreground }]}
-              placeholder={"写下你的任务..."}
-              placeholderTextColor={meta.accent + "77"}
+              placeholder="写下你的任务内容..."
+              placeholderTextColor={m.accent + "66"}
               value={content}
               onChangeText={setContent}
               multiline
-              maxLength={400}
+              maxLength={500}
               autoFocus
               textAlignVertical="top"
               scrollEnabled={false}
             />
 
-            {/* Deadline button */}
-            <View style={styles.deadlineSection}>
+            {/* Deadline */}
+            <View style={styles.deadlineWrap}>
               <Pressable
                 style={[
                   styles.deadlineBtn,
                   {
-                    backgroundColor: deadline ? meta.accent + "15" : "rgba(0,0,0,0.04)",
-                    borderColor: deadline ? meta.accent + "50" : "rgba(0,0,0,0.07)",
+                    backgroundColor: deadline ? m.accent + "14" : "rgba(0,0,0,0.04)",
+                    borderColor: deadline ? m.accent + "50" : "rgba(0,0,0,0.08)",
                   },
                 ]}
-                onPress={() => setShowCalendar((v) => !v)}
+                onPress={() => setShowCal((v) => !v)}
               >
-                <Feather
-                  name="calendar"
-                  size={15}
-                  color={deadline ? meta.accent : colors.mutedForeground}
-                />
-                <Text
-                  style={[
-                    styles.deadlineBtnText,
-                    { color: deadline ? meta.textColor : colors.mutedForeground },
-                  ]}
-                >
+                <Feather name="calendar" size={15} color={deadline ? m.accent : colors.mutedForeground} />
+                <Text style={[styles.deadlineText, { color: deadline ? m.accent : colors.mutedForeground }]}>
                   {deadline
-                    ? (() => {
-                        const [y, m, d] = deadline.split("-");
-                        return `${y}年${Number(m)}月${Number(d)}日`;
-                      })()
-                    : "点击设置截止日期"}
+                    ? (() => { const [y, mo, d] = deadline.split("-"); return `${y}年${+mo}月${+d}日`; })()
+                    : "设置截止日期"}
                 </Text>
                 {deadline && (
-                  <Pressable
-                    hitSlop={10}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      setDeadline(null);
-                      setShowCalendar(false);
-                    }}
-                  >
-                    <Feather name="x-circle" size={15} color={meta.accent} />
+                  <Pressable hitSlop={10} onPress={(e) => { e.stopPropagation(); setDeadline(null); setShowCal(false); }}>
+                    <Feather name="x-circle" size={15} color={m.accent} />
                   </Pressable>
                 )}
               </Pressable>
-
-              {showCalendar && (
-                <CalendarPicker
-                  selected={deadline}
-                  onSelect={(d) => {
-                    setDeadline(d);
-                    setShowCalendar(false);
-                  }}
-                  compact
-                />
+              {showCal && (
+                <CalendarPicker selected={deadline} onSelect={(d) => { setDeadline(d); setShowCal(false); }} compact />
               )}
             </View>
 
-            {/* Bottom: up-swipe save hint */}
-            <View style={styles.saveHintRow}>
-              <Animated.View style={[styles.saveHintActive, { opacity: saveHintOpacity }]}>
-                <Feather name="arrow-up" size={16} color={meta.accent} />
-                <Text style={[styles.saveHintTextActive, { color: meta.accent }]}>
-                  松手保存
-                </Text>
-              </Animated.View>
+            {/* ── Zone C: Save zone (upward swipe) ────────────────────── */}
+            <Animated.View
+              {...savePan.panHandlers}
+              style={[
+                styles.saveZone,
+                {
+                  backgroundColor: m.accent + "18",
+                  borderColor: m.accent + "40",
+                  transform: [{ scale: saveZoneScale }],
+                },
+              ]}
+            >
+              <Feather name="arrow-up" size={22} color={m.accent} />
+              <Text style={[styles.saveLabel, { color: m.accent }]}>
+                上划保存为「{m.label}」
+              </Text>
+              <Feather name="arrow-up" size={22} color={m.accent} />
+            </Animated.View>
 
-              <View style={styles.saveHintIdle}>
-                <View style={[styles.upArrowIcon, { borderColor: meta.accent + "66" }]}>
-                  <Feather name="arrow-up" size={14} color={meta.accent + "aa"} />
-                </View>
-                <Text style={[styles.saveHintTextIdle, { color: meta.accent + "99" }]}>
-                  上划保存为「{meta.label}」
-                </Text>
-              </View>
-            </View>
           </View>
         </Animated.View>
       </KeyboardAvoidingView>
@@ -419,12 +288,12 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
   );
 }
 
-const CARD_W = SCREEN_W - 32;
+const CARD_W = Math.min(SCREEN_W - 32, 420);
 
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.52)",
   },
   kav: {
     flex: 1,
@@ -434,31 +303,40 @@ const styles = StyleSheet.create({
   } as any,
   cardWrapper: {
     width: CARD_W,
-    maxWidth: 440,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.22,
-    shadowRadius: 28,
-    elevation: 20,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.24,
+    shadowRadius: 32,
+    elevation: 22,
   },
   card: {
-    borderRadius: 24,
-    padding: 22,
-    gap: 16,
+    borderRadius: 26,
     overflow: "hidden",
+    gap: 0,
   },
-  hintRow: {
+
+  // ── Header zone ──────────────────────────────────────────────────────────
+  headerZone: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingVertical: 16,
+    paddingHorizontal: 20,
   },
-  hintGroup: {
+  headerLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    minWidth: 60,
+    width: 72,
   },
-  hintText: {
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    width: 72,
+    justifyContent: "flex-end",
+  },
+  hintSideText: {
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
@@ -466,82 +344,57 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1.5,
   },
-  priorityDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  priorityLabel: {
-    fontSize: 14,
-    fontFamily: "Inter_700Bold",
-  },
-  accentLine: {
-    height: 2,
-    borderRadius: 1,
-    marginHorizontal: -22,
-  },
-  textInput: {
-    fontSize: 20,
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  priorityText: { fontSize: 15, fontFamily: "Inter_700Bold" },
+
+  // ── Zone hint ─────────────────────────────────────────────────────────────
+  zoneHint: {
+    textAlign: "center",
+    fontSize: 11,
     fontFamily: "Inter_400Regular",
-    lineHeight: 30,
-    minHeight: 140,
-    paddingTop: 4,
+    paddingVertical: 6,
   },
-  deadlineSection: {
-    gap: 10,
+
+  // ── Text input ────────────────────────────────────────────────────────────
+  textInput: {
+    fontSize: 19,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 28,
+    minHeight: 130,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
   },
+
+  // ── Deadline ──────────────────────────────────────────────────────────────
+  deadlineWrap: { paddingHorizontal: 16, paddingBottom: 10, gap: 10 },
   deadlineBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 9,
+    gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderRadius: 12,
     borderWidth: 1,
   },
-  deadlineBtnText: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: "Inter_500Medium",
-  },
-  saveHintRow: {
-    alignItems: "center",
-    paddingTop: 4,
-    position: "relative",
-    height: 36,
-    justifyContent: "center",
-  },
-  saveHintIdle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  saveHintActive: {
-    ...StyleSheet.absoluteFillObject,
+  deadlineText: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
+
+  // ── Save zone ─────────────────────────────────────────────────────────────
+  saveZone: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 12,
+    paddingVertical: 22,
+    marginHorizontal: 0,
+    borderTopWidth: 1.5,
   },
-  upArrowIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  saveHintTextIdle: {
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-  },
-  saveHintTextActive: {
-    fontSize: 15,
+  saveLabel: {
+    fontSize: 16,
     fontFamily: "Inter_700Bold",
   },
 });
