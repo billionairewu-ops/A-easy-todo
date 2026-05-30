@@ -19,8 +19,9 @@ import type { Priority } from "@/context/TaskContext";
 import { useColors } from "@/hooks/useColors";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
-const SWIPE_H = 75;   // left/right to commit priority
-const SWIPE_UP = 55;  // upward to save
+const SWIPE_H = 75;
+const SWIPE_UP = 45;   // lower threshold — easier to trigger
+const SWIPE_VY = -0.4; // also trigger on fast flick
 
 interface Props {
   visible: boolean;
@@ -41,17 +42,30 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
   const [showCal, setShowCal] = useState(false);
   const [displayPriority, setDisplayPriority] = useState<Priority>("track");
 
+  // ── KEY FIX: refs mirror state so PanResponder closures always read fresh values ──
+  const contentRef = useRef("");
+  const deadlineRef = useRef<string | null>(null);
   const committedPriority = useRef<Priority>("track");
   const isAnimating = useRef(false);
   const textRef = useRef<TextInput>(null);
 
-  // Animated values — all useNativeDriver: true
+  // Keep refs in sync whenever state changes
+  const handleSetContent = (v: string) => {
+    contentRef.current = v;
+    setContent(v);
+  };
+  const handleSetDeadline = (v: string | null) => {
+    deadlineRef.current = v;
+    setDeadline(v);
+  };
+
+  // Animated values
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.88)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
-  const saveZoneScale = useRef(new Animated.Value(1)).current;
+  const saveScaleAnim = useRef(new Animated.Value(1)).current;
 
   const rotate = translateX.interpolate({
     inputRange: [-SCREEN_W / 2, 0, SCREEN_W / 2],
@@ -59,18 +73,20 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
     extrapolate: "clamp",
   });
 
-  // ── Entrance / Reset ──────────────────────────────────────────────────────
+  // ── Reset on open ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!visible) return;
+    contentRef.current = "";
+    deadlineRef.current = null;
+    committedPriority.current = "track";
+    isAnimating.current = false;
     setContent("");
     setDeadline(null);
     setShowCal(false);
     setDisplayPriority("track");
-    committedPriority.current = "track";
-    isAnimating.current = false;
     translateX.setValue(0);
     translateY.setValue(0);
-    saveZoneScale.setValue(1);
+    saveScaleAnim.setValue(1);
 
     Animated.parallel([
       Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, tension: 70, friction: 8 }),
@@ -86,7 +102,9 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
       Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 160, friction: 8 }),
     ]).start();
 
-  const flyUp = () => {
+  // Stored in a ref so PanResponder closure always calls the LATEST version
+  const flyUpRef = useRef(() => {});
+  flyUpRef.current = () => {
     if (isAnimating.current) return;
     isAnimating.current = true;
     Keyboard.dismiss();
@@ -97,8 +115,13 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
       Animated.timing(cardOpacity, { toValue: 0, duration: 260, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: 240, useNativeDriver: true }),
     ]).start(() => {
-      if (content.trim()) {
-        onSave({ title: content.trim(), priority: committedPriority.current, deadline });
+      // Read from refs — always fresh, even from stale PanResponder closure
+      if (contentRef.current.trim()) {
+        onSave({
+          title: contentRef.current.trim(),
+          priority: committedPriority.current,
+          deadline: deadlineRef.current,
+        });
       }
       onClose();
     });
@@ -122,7 +145,7 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
       onPanResponderGrant: () => { textRef.current?.blur(); },
       onPanResponderMove: (_, g) => {
         translateX.setValue(g.dx);
-        translateY.setValue(g.dy * 0.15);
+        translateY.setValue(g.dy * 0.1);
         setDisplayPriority(
           g.dx < -20 ? "urgent" : g.dx > 20 ? "remember" : committedPriority.current
         );
@@ -152,17 +175,22 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
       onPanResponderMove: (_, g) => {
         if (g.dy < 0) {
           translateY.setValue(g.dy);
-          // Save zone grows as card lifts
-          const progress = Math.min(Math.abs(g.dy) / SWIPE_UP, 1);
-          saveZoneScale.setValue(1 + progress * 0.12);
+          const pct = Math.min(Math.abs(g.dy) / SWIPE_UP, 1);
+          saveScaleAnim.setValue(1 + pct * 0.1);
         }
       },
       onPanResponderRelease: (_, g) => {
-        saveZoneScale.setValue(1);
-        if (g.dy < -SWIPE_UP) {
-          flyUp();
+        saveScaleAnim.setValue(1);
+        // Trigger on distance OR fast velocity
+        if (g.dy < -SWIPE_UP || g.vy < SWIPE_VY) {
+          flyUpRef.current(); // ← always calls the latest flyUp via ref
         } else {
-          Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 160, friction: 8 }).start();
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 160,
+            friction: 8,
+          }).start();
         }
       },
     })
@@ -198,34 +226,32 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
 
             {/* ── Zone A: Header (left / right swipe) ─────────────────── */}
             <View {...headerPan.panHandlers} style={[styles.headerZone, { backgroundColor: m.tint }]}>
-              <View style={styles.headerLeft}>
+              <View style={styles.headerSide}>
                 <Feather name="chevron-left" size={18} color={META.urgent.accent} />
-                <Text style={[styles.hintSideText, { color: META.urgent.accent }]}>紧急</Text>
+                <Text style={[styles.sideText, { color: META.urgent.accent }]}>紧急</Text>
               </View>
 
-              <View style={[styles.priorityBadge, { borderColor: m.accent + "60", backgroundColor: m.accent + "18" }]}>
+              <View style={[styles.badge, { borderColor: m.accent + "60", backgroundColor: m.accent + "18" }]}>
                 <View style={[styles.dot, { backgroundColor: m.accent }]} />
-                <Text style={[styles.priorityText, { color: m.accent }]}>{m.label}</Text>
+                <Text style={[styles.badgeText, { color: m.accent }]}>{m.label}</Text>
               </View>
 
-              <View style={styles.headerRight}>
-                <Text style={[styles.hintSideText, { color: META.remember.accent }]}>记得做</Text>
+              <View style={[styles.headerSide, styles.headerSideRight]}>
+                <Text style={[styles.sideText, { color: META.remember.accent }]}>记得做</Text>
                 <Feather name="chevron-right" size={18} color={META.remember.accent} />
               </View>
             </View>
 
-            <Text style={[styles.zoneHint, { color: m.accent + "88" }]}>
-              ← 左右拖动选分类
-            </Text>
+            <Text style={[styles.subHint, { color: m.accent + "80" }]}>← 左右拖动顶部选优先级</Text>
 
-            {/* ── Zone B: Text input (free for typing) ────────────────── */}
+            {/* ── Zone B: Text input ──────────────────────────────────── */}
             <TextInput
               ref={textRef}
               style={[styles.textInput, { color: colors.foreground }]}
               placeholder="写下你的任务内容..."
-              placeholderTextColor={m.accent + "66"}
+              placeholderTextColor={m.accent + "60"}
               value={content}
-              onChangeText={setContent}
+              onChangeText={handleSetContent}
               multiline
               maxLength={500}
               autoFocus
@@ -233,7 +259,7 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
               scrollEnabled={false}
             />
 
-            {/* Deadline */}
+            {/* ── Deadline ────────────────────────────────────────────── */}
             <View style={styles.deadlineWrap}>
               <Pressable
                 style={[
@@ -252,13 +278,17 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
                     : "设置截止日期"}
                 </Text>
                 {deadline && (
-                  <Pressable hitSlop={10} onPress={(e) => { e.stopPropagation(); setDeadline(null); setShowCal(false); }}>
+                  <Pressable hitSlop={12} onPress={(e) => { e.stopPropagation(); handleSetDeadline(null); setShowCal(false); }}>
                     <Feather name="x-circle" size={15} color={m.accent} />
                   </Pressable>
                 )}
               </Pressable>
               {showCal && (
-                <CalendarPicker selected={deadline} onSelect={(d) => { setDeadline(d); setShowCal(false); }} compact />
+                <CalendarPicker
+                  selected={deadline}
+                  onSelect={(d) => { handleSetDeadline(d); setShowCal(false); }}
+                  compact
+                />
               )}
             </View>
 
@@ -269,16 +299,17 @@ export function SwipeTaskCard({ visible, onSave, onClose }: Props) {
                 styles.saveZone,
                 {
                   backgroundColor: m.accent + "18",
-                  borderColor: m.accent + "40",
-                  transform: [{ scale: saveZoneScale }],
+                  borderColor: m.accent + "44",
+                  transform: [{ scale: saveScaleAnim }],
                 },
               ]}
             >
-              <Feather name="arrow-up" size={22} color={m.accent} />
-              <Text style={[styles.saveLabel, { color: m.accent }]}>
-                上划保存为「{m.label}」
-              </Text>
-              <Feather name="arrow-up" size={22} color={m.accent} />
+              <Feather name="arrow-up" size={20} color={m.accent} />
+              <View style={styles.saveLabelWrap}>
+                <Text style={[styles.saveLabel, { color: m.accent }]}>上划保存</Text>
+                <Text style={[styles.saveSub, { color: m.accent + "cc" }]}>保存为「{m.label}」</Text>
+              </View>
+              <Feather name="arrow-up" size={20} color={m.accent} />
             </Animated.View>
 
           </View>
@@ -312,66 +343,52 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 26,
     overflow: "hidden",
-    gap: 0,
   },
 
-  // ── Header zone ──────────────────────────────────────────────────────────
+  // Header
   headerZone: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 16,
+    paddingVertical: 18,
     paddingHorizontal: 20,
   },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    width: 72,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    width: 72,
-    justifyContent: "flex-end",
-  },
-  hintSideText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  priorityBadge: {
+  headerSide: { flexDirection: "row", alignItems: "center", gap: 4, width: 76 },
+  headerSideRight: { justifyContent: "flex-end" },
+  sideText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  badge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
     paddingHorizontal: 16,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1.5,
   },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  priorityText: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  badgeText: { fontSize: 15, fontFamily: "Inter_700Bold" },
 
-  // ── Zone hint ─────────────────────────────────────────────────────────────
-  zoneHint: {
+  subHint: {
     textAlign: "center",
     fontSize: 11,
     fontFamily: "Inter_400Regular",
     paddingVertical: 6,
+    paddingHorizontal: 20,
   },
 
-  // ── Text input ────────────────────────────────────────────────────────────
+  // Text input
   textInput: {
     fontSize: 19,
     fontFamily: "Inter_400Regular",
     lineHeight: 28,
-    minHeight: 130,
+    minHeight: 120,
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
 
-  // ── Deadline ──────────────────────────────────────────────────────────────
-  deadlineWrap: { paddingHorizontal: 16, paddingBottom: 10, gap: 10 },
+  // Deadline
+  deadlineWrap: { paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
   deadlineBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -383,18 +400,16 @@ const styles = StyleSheet.create({
   },
   deadlineText: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
 
-  // ── Save zone ─────────────────────────────────────────────────────────────
+  // Save zone
   saveZone: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    paddingVertical: 22,
-    marginHorizontal: 0,
+    gap: 14,
+    paddingVertical: 26,
     borderTopWidth: 1.5,
   },
-  saveLabel: {
-    fontSize: 16,
-    fontFamily: "Inter_700Bold",
-  },
+  saveLabelWrap: { alignItems: "center", gap: 2 },
+  saveLabel: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  saveSub: { fontSize: 12, fontFamily: "Inter_500Medium" },
 });
