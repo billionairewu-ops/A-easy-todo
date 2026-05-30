@@ -179,7 +179,7 @@ export default function TasksScreen() {
       <Pressable
         style={[
           styles.fab,
-          { backgroundColor: colors.primary, bottom: insets.bottom + 76 },
+          { backgroundColor: colors.primary, bottom: insets.bottom + 96 },
           swipeCardVisible && styles.fabHidden,
         ]}
         onPress={() => {
