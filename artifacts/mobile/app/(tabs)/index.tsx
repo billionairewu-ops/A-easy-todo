@@ -33,8 +33,8 @@ export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const { tasks, addTask, updateTask, deleteTask, toggleComplete, filter, setFilter } = useTasks();
 
-  const swipePan = useSwipeTabs(0);
   const [swipeCardVisible, setSwipeCardVisible] = useState(false);
+  const swipePan = useSwipeTabs(0, swipeCardVisible);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 

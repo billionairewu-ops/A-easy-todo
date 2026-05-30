@@ -12,7 +12,6 @@ import {
 } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import type { Task } from "@/context/TaskContext";
-import { PriorityBadge } from "./PriorityBadge";
 
 interface Props {
   task: Task;
@@ -30,12 +29,15 @@ function formatDeadline(deadline: string): { label: string; overdue: boolean; to
   if (diff < 0) return { label: `逾期 ${Math.abs(diff)} 天`, overdue: true, today: false };
   if (diff === 0) return { label: "今天到期", overdue: false, today: true };
   if (diff === 1) return { label: "明天到期", overdue: false, today: false };
-  return {
-    label: `${d.getMonth() + 1}月${d.getDate()}日`,
-    overdue: false,
-    today: false,
-  };
+  return { label: `${d.getMonth() + 1}月${d.getDate()}日`, overdue: false, today: false };
 }
+
+// Priority → vivid card theme (matches SwipeTaskCard palette)
+const CARD_THEME = {
+  urgent:   { bg: "#FFF0EF", border: "#FF1F1F38", accent: "#FF1F1F", label: "紧急" },
+  track:    { bg: "#FFF8E6", border: "#F08A0038", accent: "#F08A00", label: "需跟踪" },
+  remember: { bg: "#EFF2FF", border: "#1C44F538", accent: "#1C44F5", label: "记得做" },
+} as const;
 
 export function TaskCard({ task, onToggle, onEdit, onDelete }: Props) {
   const colors = useColors();
@@ -65,14 +67,13 @@ export function TaskCard({ task, onToggle, onEdit, onDelete }: Props) {
     })
   ).current;
 
-  const accentColor =
-    task.priority === "urgent"
-      ? colors.urgent
-      : task.priority === "track"
-      ? colors.track
-      : colors.remember;
-
+  const theme = CARD_THEME[task.priority];
   const deadline = task.deadline ? formatDeadline(task.deadline) : null;
+
+  // Completed tasks: muted grey-ish card
+  const cardBg = task.completed ? colors.card : theme.bg;
+  const cardBorder = task.completed ? colors.border : theme.border;
+  const accent = task.completed ? colors.mutedForeground : theme.accent;
 
   return (
     <View style={styles.wrapper}>
@@ -91,20 +92,22 @@ export function TaskCard({ task, onToggle, onEdit, onDelete }: Props) {
         style={[
           styles.card,
           {
-            backgroundColor: colors.card,
-            borderColor: colors.border,
+            backgroundColor: cardBg,
+            borderColor: cardBorder,
             transform: [{ translateX }],
           },
         ]}
       >
-        <View style={[styles.accentBar, { backgroundColor: accentColor }]} />
+        {/* Priority dot strip (thin left border accent) */}
+        <View style={[styles.strip, { backgroundColor: accent }]} />
 
+        {/* Checkbox */}
         <Pressable
           style={[
             styles.checkbox,
             {
-              borderColor: task.completed ? accentColor : colors.border,
-              backgroundColor: task.completed ? accentColor : "transparent",
+              borderColor: accent,
+              backgroundColor: task.completed ? accent : "transparent",
             },
           ]}
           onPress={() => {
@@ -116,19 +119,18 @@ export function TaskCard({ task, onToggle, onEdit, onDelete }: Props) {
           {task.completed && <Feather name="check" size={14} color="#fff" />}
         </Pressable>
 
+        {/* Content */}
         <Pressable style={styles.content} onPress={onEdit}>
-          <View style={styles.titleRow}>
-            <Text
-              style={[
-                styles.title,
-                { color: colors.foreground },
-                task.completed && { color: colors.mutedForeground, textDecorationLine: "line-through" },
-              ]}
-              numberOfLines={2}
-            >
-              {task.title}
-            </Text>
-          </View>
+          <Text
+            style={[
+              styles.title,
+              { color: task.completed ? colors.mutedForeground : colors.foreground },
+              task.completed && styles.strikethrough,
+            ]}
+            numberOfLines={2}
+          >
+            {task.title}
+          </Text>
 
           {task.description ? (
             <Text
@@ -140,19 +142,18 @@ export function TaskCard({ task, onToggle, onEdit, onDelete }: Props) {
           ) : null}
 
           <View style={styles.meta}>
-            <PriorityBadge priority={task.priority} size="sm" />
-            {deadline ? (
+            {/* Priority pill */}
+            <View style={[styles.pill, { backgroundColor: accent + "22", borderColor: accent + "44" }]}>
+              <View style={[styles.pillDot, { backgroundColor: accent }]} />
+              <Text style={[styles.pillText, { color: accent }]}>{theme.label}</Text>
+            </View>
+
+            {deadline && (
               <View style={styles.deadlineRow}>
                 <Feather
                   name="calendar"
                   size={11}
-                  color={
-                    deadline.overdue
-                      ? colors.urgent
-                      : deadline.today
-                      ? colors.track
-                      : colors.mutedForeground
-                  }
+                  color={deadline.overdue ? colors.urgent : deadline.today ? colors.track : colors.mutedForeground}
                 />
                 <Text
                   style={[
@@ -169,12 +170,12 @@ export function TaskCard({ task, onToggle, onEdit, onDelete }: Props) {
                   {deadline.label}
                 </Text>
               </View>
-            ) : null}
+            )}
           </View>
         </Pressable>
 
         <Pressable onPress={onEdit} hitSlop={8} style={styles.editIcon}>
-          <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+          <Feather name="chevron-right" size={16} color={accent + "88"} />
         </Pressable>
       </Animated.View>
     </View>
@@ -201,22 +202,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     overflow: "hidden",
-    paddingVertical: 12,
+    paddingVertical: 13,
     paddingRight: 12,
     gap: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
     elevation: 2,
   },
-  accentBar: {
+  strip: {
     width: 4,
     alignSelf: "stretch",
-    borderRadius: 2,
-    marginLeft: 0,
   },
   checkbox: {
     width: 22,
@@ -230,15 +229,13 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 5,
   },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
   title: {
     fontSize: 15,
     fontFamily: "Inter_500Medium",
-    flex: 1,
     lineHeight: 21,
+  },
+  strikethrough: {
+    textDecorationLine: "line-through",
   },
   description: {
     fontSize: 13,
@@ -250,6 +247,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginTop: 2,
+  },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  pillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  pillText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
   },
   deadlineRow: {
     flexDirection: "row",

@@ -7,24 +7,28 @@ const DIST = 48;
 const VX = 0.35;
 
 /**
- * Returns PanResponder panHandlers that switch tabs on a clear horizontal swipe.
- * Safe to spread on any View — only claims gesture when horizontal >> vertical,
- * so vertical ScrollViews underneath keep working normally.
+ * Returns PanResponder panHandlers for horizontal tab-switch swipes.
+ * Pass `disabled=true` to pause gesture capture (e.g. when an overlay is open).
  */
-export function useSwipeTabs(currentIndex: 0 | 1 | 2) {
+export function useSwipeTabs(currentIndex: 0 | 1 | 2, disabled = false) {
   const router = useRouter();
-  // Refs so PanResponder closure always reads the latest values
   const idxRef = useRef(currentIndex);
-  idxRef.current = currentIndex;
+  const disabledRef = useRef(disabled);
   const routerRef = useRef(router);
+
+  // Always keep refs fresh — PanResponder closure reads from refs, never stale
+  idxRef.current = currentIndex;
+  disabledRef.current = disabled;
   routerRef.current = router;
 
   return useRef(
     PanResponder.create({
-      // Only claim gesture when clearly horizontal (horizontal > 1.5× vertical)
       onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+        !disabledRef.current &&
+        Math.abs(g.dx) > 10 &&
+        Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
       onPanResponderRelease: (_, g) => {
+        if (disabledRef.current) return;
         const idx = idxRef.current;
         const isHoriz = Math.abs(g.dx) > Math.abs(g.dy);
         const toNext = (g.dx < -DIST || g.vx < -VX) && isHoriz && idx < 2;
