@@ -8,13 +8,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
@@ -22,11 +25,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      # 忽略 TS 类型错误继续构建
-      - name: Build web app without root typecheck
-        run: pnpm -r --if-present run build
+      - name: Build mobile web app only
+        run: |
+          cd artifacts/mobile
+          pnpm run build
 
-      - name: Detect web build output
+      - name: Detect mobile build output
         id: detect_dist
         shell: bash
         run: |
@@ -34,7 +38,7 @@ jobs:
 
           DIST_DIR=""
 
-          for dir in artifacts/*/dist artifacts/*/build dist build; do
+          for dir in artifacts/mobile/dist artifacts/mobile/build artifacts/mobile/web-build artifacts/mobile/.output/public; do
             if [ -d "$dir" ] && [ -f "$dir/index.html" ]; then
               DIST_DIR="$dir"
               break
@@ -42,12 +46,16 @@ jobs:
           done
 
           if [ -z "$DIST_DIR" ]; then
-            echo "Could not find build output"
-            find . -maxdepth 5 -type f -name index.html
+            echo "Could not find mobile build output containing index.html"
+            echo "Available index.html files:"
+            find artifacts/mobile -maxdepth 6 -type f -name index.html | sort || true
+            echo "Available build-like folders:"
+            find artifacts/mobile -maxdepth 4 -type d \( -name dist -o -name build -o -name web-build -o -name public \) | sort || true
             exit 1
           fi
 
           echo "dist_dir=$DIST_DIR" >> "$GITHUB_OUTPUT"
+          echo "Detected mobile build output: $DIST_DIR"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -59,10 +67,9 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Capacitor
-        run: |
-          pnpm add -Dw @capacitor/core @capacitor/cli @capacitor/android
+        run: pnpm add -Dw @capacitor/core @capacitor/cli @capacitor/android
 
-      - name: Create capacitor config
+      - name: Create Capacitor config
         run: |
           cat > capacitor.config.json <<EOF
           {
@@ -72,12 +79,12 @@ jobs:
           }
           EOF
 
-      - name: Create Android Project
+      - name: Create Android project
         run: |
           pnpm exec cap add android
           pnpm exec cap copy android
 
-      - name: Build APK
+      - name: Build debug APK
         run: |
           cd android
           chmod +x gradlew
