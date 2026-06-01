@@ -25,41 +25,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Build mobile web app only
+      - name: Export Expo web build
         env:
           EXPO_PUBLIC_DOMAIN: task-dashboard--billionairewu.replit.app
           REPLIT_DEV_DOMAIN: task-dashboard--billionairewu.replit.app
           REPLIT_INTERNAL_APP_DOMAIN: task-dashboard--billionairewu.replit.app
         run: |
           cd artifacts/mobile
-          pnpm run build
+          pnpm exec expo export --platform web --output-dir dist
 
-      - name: Detect mobile build output
-        id: detect_dist
-        shell: bash
+      - name: Verify web build output
         run: |
-          set -e
-
-          DIST_DIR=""
-
-          for dir in artifacts/mobile/dist artifacts/mobile/build artifacts/mobile/web-build artifacts/mobile/.output/public; do
-            if [ -d "$dir" ] && [ -f "$dir/index.html" ]; then
-              DIST_DIR="$dir"
-              break
-            fi
-          done
-
-          if [ -z "$DIST_DIR" ]; then
-            echo "Could not find mobile build output containing index.html"
-            echo "Available index.html files:"
-            find artifacts/mobile -maxdepth 6 -type f -name index.html | sort || true
-            echo "Available build-like folders:"
-            find artifacts/mobile -maxdepth 4 -type d \( -name dist -o -name build -o -name web-build -o -name public \) | sort || true
+          if [ ! -f artifacts/mobile/dist/index.html ]; then
+            echo "Expo web export did not create artifacts/mobile/dist/index.html"
+            echo "Files under artifacts/mobile/dist:"
+            find artifacts/mobile/dist -maxdepth 4 -type f | sort || true
             exit 1
           fi
-
-          echo "dist_dir=$DIST_DIR" >> "$GITHUB_OUTPUT"
-          echo "Detected mobile build output: $DIST_DIR"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -79,7 +61,7 @@ jobs:
           {
             "appId": "com.billionairewu.taskdashboard",
             "appName": "Task Dashboard",
-            "webDir": "${{ steps.detect_dist.outputs.dist_dir }}"
+            "webDir": "artifacts/mobile/dist"
           }
           EOF
 
