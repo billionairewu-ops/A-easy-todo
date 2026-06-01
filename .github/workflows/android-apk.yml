@@ -26,6 +26,10 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Build mobile web app only
+        env:
+          EXPO_PUBLIC_DOMAIN: task-dashboard--billionairewu.replit.app
+          REPLIT_DEV_DOMAIN: task-dashboard--billionairewu.replit.app
+          REPLIT_INTERNAL_APP_DOMAIN: task-dashboard--billionairewu.replit.app
         run: |
           cd artifacts/mobile
           pnpm run build
