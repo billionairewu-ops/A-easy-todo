@@ -23,8 +23,8 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       # 忽略 TS 类型错误继续构建
-      - name: Build web app
-        run: pnpm build || true
+      - name: Build web app without root typecheck
+        run: pnpm -r --if-present run build
 
       - name: Detect web build output
         id: detect_dist
